@@ -1,0 +1,23 @@
+version = 1
+revision = 3
+requires-python = ">=3.14"
+
+[[package]]
+name = "voicemeeter-api"
+version = "2.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/45/a1691477990748771d63d7b2f37bf65ace0908257e9fcfa02ae766a7ff06/voicemeeter_api-2.7.1.tar.gz", hash = "sha256:68d716a4579133ef4abacb7e870c7aacf641a05e391ceb73cb037f1d9167d438", size = 34281, upload-time = "2025-06-17T08:54:10.746Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/ed/5a6b950ff51e77b6f6cb20760da3028391ae8c021a9cff2d39e7e8fbdb72/voicemeeter_api-2.7.1-py3-none-any.whl", hash = "sha256:c20641b55f881ce40167730e3b3be97cf217d09345b0b430d4f874c760a41808", size = 37116, upload-time = "2025-06-17T08:54:09.717Z" },
+]
+
+[[package]]
+name = "voicemeeterswitcher"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "voicemeeter-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "voicemeeter-api", specifier = ">=2.4.0" }]

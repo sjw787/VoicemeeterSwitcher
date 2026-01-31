@@ -1,0 +1,8 @@
+[project]
+name = "voicemeeterswitcher"
+version = "0.1.0"
+description = "Cycles through Voicemeeter saved settings"
+requires-python = ">=3.14"
+dependencies = [
+    "voicemeeter-api>=2.4.0",
+]
