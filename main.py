@@ -146,7 +146,9 @@ class VoicemeeterSettingsSwitcher:
                 except Exception as e:
                     print(f"  Warning: Could not set input device {index + 1}: {e}")
 
-            time.sleep(0.5)
+            # Give Voicemeeter extra time to apply all settings and stabilize
+            # Increased to prevent crashes
+            time.sleep(2.5)
             print(f"\nSettings applied from {file_path.name}")
             return True
 

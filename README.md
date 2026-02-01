@@ -93,10 +93,39 @@ To bind this to a hotkey:
 ```
 VoicemeeterSwitcher/
 ├── main.py              # Main script
+├── api.py               # FastAPI REST API server
 ├── pyproject.toml       # Project configuration
 ├── README.md            # This file
-└── settings/            # Place your .xml settings files here
-    ├── setting1.xml
-    ├── setting2.xml
-    └── setting3.xml
+├── API_USAGE.md         # API documentation
+├── WEB_UI_GUIDE.md      # Web UI documentation
+├── run_api.bat          # Start API server
+├── run_webui.bat        # Start web UI
+├── start_all.bat        # Start both API and web UI
+├── settings/            # Place your .xml settings files here
+│   ├── 1-DeskSettings.xml
+│   ├── 2-Headset.xml
+│   └── ...
+└── voicemeeter-web-ui/  # Next.js web interface
+    ├── app/
+    ├── components/
+    └── ...
 ```
+
+## Remote Control Options
+
+### 1. Web Interface
+Modern, responsive web UI - works on desktop, tablet, and mobile
+- See [WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)
+
+### 2. REST API
+Programmatic control via HTTP API
+- See [API_USAGE.md](API_USAGE.md)
+
+### 3. iPhone Shortcuts
+Control with Siri voice commands
+- See [API_USAGE.md](API_USAGE.md) → iPhone Shortcuts section
+
+### 4. Command Line
+Direct Python script execution
+- `python main.py` to cycle profiles
+
