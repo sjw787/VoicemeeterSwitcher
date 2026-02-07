@@ -24,11 +24,11 @@ export default function ProfileCard({ profile, isActive, isLoading, hasError, on
   };
   return (
     <div
-      className={`relative rounded-xl p-6 transition-all transform hover:scale-105 cursor-pointer ${getCardStyle()}`}
+      className={`relative rounded-xl p-4 md:p-6 transition-all transform hover:scale-105 cursor-pointer ${getCardStyle()}`}
       onClick={isLoading ? undefined : onLoad}
     >
       {isActive && !isLoading && !hasError && (
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-2 right-2 md:top-3 md:right-3">
           <span className="flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
@@ -36,27 +36,27 @@ export default function ProfileCard({ profile, isActive, isLoading, hasError, on
         </div>
       )}
       {isLoading && (
-        <div className="absolute top-3 right-3">
-          <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+        <div className="absolute top-2 right-2 md:top-3 md:right-3">
+          <div className="animate-spin h-4 w-4 md:h-5 md:w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
         </div>
       )}
       {hasError && !isLoading && (
-        <div className="absolute top-3 right-3">
-          <span className="text-yellow-500 text-xl">⚠️</span>
+        <div className="absolute top-2 right-2 md:top-3 md:right-3">
+          <span className="text-yellow-500 text-lg md:text-xl">⚠️</span>
         </div>
       )}
-      <div className="flex items-start justify-between mb-4">
-        <div className="text-3xl">🎵</div>
-        <div className="text-sm font-mono text-gray-500">#{profile.index + 1}</div>
+      <div className="flex items-start justify-between mb-2 md:mb-4">
+        <div className="text-2xl md:text-3xl">🎵</div>
+        <div className="text-xs md:text-sm font-mono text-gray-500">#{profile.index + 1}</div>
       </div>
-      <h3 className="text-xl font-bold text-white mb-2">{profile.display_name}</h3>
-      <p className="text-sm text-gray-400 mb-4 truncate">{profile.filename}</p>
+      <h3 className="text-lg md:text-xl font-bold text-white mb-1 md:mb-2">{profile.display_name}</h3>
+      <p className="text-xs md:text-sm text-gray-400 mb-3 md:mb-4 truncate">{profile.filename}</p>
       <button
         onClick={(e) => {
           e.stopPropagation();
           if (!isLoading) onLoad();
         }}
-        className={`w-full py-2 px-4 rounded-lg font-semibold transition-colors ${
+        className={`w-full py-2.5 md:py-2 px-4 rounded-lg text-sm md:text-base font-semibold transition-colors touch-manipulation ${
           isLoading
             ? "bg-blue-600 text-white cursor-wait"
             : hasError

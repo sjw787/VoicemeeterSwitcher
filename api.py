@@ -20,6 +20,9 @@ app.add_middleware(
 class ProfileRequest(BaseModel):
     profile_name: str
 
+class VolumeRequest(BaseModel):
+    gain: float  # Volume in dB, typically -60.0 to 12.0
+
 # Initialize the switcher
 switcher = VoicemeeterSettingsSwitcher()
 
@@ -195,3 +198,58 @@ def get_status():
             "current_profile": None,
             "message": "No profiles available"
         }
+
+@app.get("/api/volume/a1")
+def get_a1_volume():
+    """Get current A1 output volume"""
+    try:
+        def get_volume_operation(vmr):
+            # Bus 0 is A1 output, get the gain parameter
+            # The gain value directly matches the dB display in Voicemeeter UI
+            gain = vmr.bus[0].gain
+            return gain
+
+        gain = execute_with_vmr(get_volume_operation)
+        return {
+            "bus": "A1",
+            "gain": gain,
+            "bus_index": 0
+        }
+    except Exception as e:
+        print(f"Exception while getting A1 volume: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/volume/a1")
+def set_a1_volume(request: VolumeRequest):
+    """Set A1 output volume"""
+    try:
+        # Validate gain range (-60.0 to 12.0 dB is typical for Voicemeeter)
+        if request.gain < -60.0 or request.gain > 12.0:
+            raise HTTPException(status_code=400, detail="Gain must be between -60.0 and 12.0 dB")
+
+        print(f"\nReceived request to set A1 volume to {request.gain} dB")
+
+        def set_volume_operation(vmr):
+            # Bus 0 is A1 output
+            # The gain value directly matches the dB display in Voicemeeter UI
+            vmr.bus[0].gain = request.gain
+            return True
+
+        execute_with_vmr(set_volume_operation)
+
+        print(f"✓ Successfully set A1 volume to {request.gain} dB\n")
+        return {
+            "status": "success",
+            "message": f"Set A1 volume to {request.gain} dB",
+            "bus": "A1",
+            "gain": request.gain
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Exception while setting A1 volume: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))

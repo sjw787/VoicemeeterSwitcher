@@ -14,8 +14,8 @@ echo.
 echo ==========================================
 echo Both servers are starting!
 echo.
-echo API Server: http://localhost:5000
-echo Web UI: http://localhost:3000
+echo API Server: http://localhost:8080
+echo Web UI: http://localhost:3100
 echo.
 echo Press any key to close this window...
 echo (The servers will continue running in their own windows)

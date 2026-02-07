@@ -12,3 +12,10 @@ export interface Status {
   total_profiles: number;
   settings_dir: string;
 }
+
+export interface VolumeInfo {
+  bus: string;
+  gain: number;
+  bus_index: number;
+}
+

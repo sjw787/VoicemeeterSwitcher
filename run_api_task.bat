@@ -9,4 +9,4 @@ call .venv\Scripts\activate.bat
 
 REM Run without --reload (more stable for scheduled tasks)
 REM Use --host 0.0.0.0 for network access
-uvicorn api:app --host 0.0.0.0 --port 5000
+uvicorn api:app --host 0.0.0.0 --port 8080

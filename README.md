@@ -116,10 +116,14 @@ VoicemeeterSwitcher/
 ### 1. Web Interface
 Modern, responsive web UI - works on desktop, tablet, and mobile
 - See [WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)
+- **NEW**: A1 Volume Control - adjust output volume directly from web UI
+- See [VOLUME_QUICKSTART.md](VOLUME_QUICKSTART.md)
 
 ### 2. REST API
 Programmatic control via HTTP API
 - See [API_USAGE.md](API_USAGE.md)
+- **NEW**: Volume control endpoints (`GET/POST /api/volume/a1`)
+- See [VOLUME_CONTROL.md](VOLUME_CONTROL.md)
 
 ### 3. iPhone Shortcuts
 Control with Siri voice commands
@@ -128,4 +132,16 @@ Control with Siri voice commands
 ### 4. Command Line
 Direct Python script execution
 - `python main.py` to cycle profiles
+
+## Features
+
+✅ **Profile Switching** - Cycle through saved Voicemeeter configurations
+✅ **Web UI** - Beautiful, responsive interface for all devices
+✅ **REST API** - HTTP endpoints for automation and integration
+✅ **Volume Control** - Adjust A1 output volume from web UI or API
+✅ **Status Monitoring** - Real-time display of current profile and settings
+✅ **Mobile Support** - Full touch support for phones and tablets
+✅ **Background Mode** - Run API server as Windows service
+✅ **Network Access** - Control from any device on your network
+✅ **Crash Protection** - Thread-safe operations with rate limiting
 
