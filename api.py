@@ -1,14 +1,69 @@
+"""
+Voicemeeter Control API.
+
+All Voicemeeter access goes through :class:`controller.VoicemeeterController`,
+which owns a single lazily-opened connection and separates cheap parameter
+writes (gain, mute) from device-reassigning profile loads. See the module
+docstring in ``controller.py`` for why that split exists.
+
+Note there is no module-level ``import voicemeeterlib`` here: the controller
+imports it lazily so this module stays importable -- and testable -- off
+Windows.
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import voicemeeterlib
-import time
-import threading
+from pydantic import BaseModel, Field
+
+from controller import (
+    GAIN_MAX_DB,
+    GAIN_MIN_DB,
+    ProfileSwitchInProgress,
+    VoicemeeterController,
+    VoicemeeterUnavailable,
+)
 from main import VoicemeeterSettingsSwitcher
 
-app = FastAPI(title="Voicemeeter Control API")
 
-# Enable CORS for phone access
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ[name])
+    except (KeyError, ValueError):
+        return default
+
+
+switcher = VoicemeeterSettingsSwitcher()
+
+controller = VoicemeeterController(
+    switcher,
+    kind=os.environ.get("VMSW_KIND", "potato"),
+    min_profile_interval=_env_float("VMSW_MIN_PROFILE_INTERVAL", 2.0),
+    reconnect_per_operation=_env_flag("VMSW_RECONNECT_PER_OPERATION"),
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    controller.close()
+
+
+app = FastAPI(title="Voicemeeter Control API", lifespan=lifespan)
+
+# Enable CORS for phone access.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,53 +72,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class ProfileRequest(BaseModel):
     profile_name: str
 
+
 class VolumeRequest(BaseModel):
-    gain: float  # Volume in dB, typically -60.0 to 12.0
+    gain: float = Field(..., description="Absolute volume in dB")
 
-# Initialize the switcher
-switcher = VoicemeeterSettingsSwitcher()
 
-# Mutex lock to prevent concurrent Voicemeeter operations
-# This prevents crashes from simultaneous API calls
-vmr_lock = threading.Lock()
-last_operation_time = 0
-MIN_DELAY_BETWEEN_OPERATIONS = 2.0  # Minimum 2 seconds between operations
+#: A single dial detent is a couple of dB, so anything approaching a
+#: full-range sweep in one request is a caller bug, not a gesture.
+MAX_DELTA_DB = 72.0
 
-def execute_with_vmr(operation_func):
+
+class VolumeAdjustRequest(BaseModel):
+    delta_db: float = Field(
+        ...,
+        description="Relative change in dB. Negative lowers the volume.",
+    )
+
+
+class MuteRequest(BaseModel):
+    muted: bool
+
+
+@contextmanager
+def translate_errors():
+    """Map controller failures onto HTTP status codes.
+
+    503 means "Voicemeeter isn't reachable right now" -- expected on a cold
+    boot before Voicemeeter has started, and retryable. 409 means a device
+    switch is in flight and the input was deliberately dropped.
     """
-    Execute a Voicemeeter operation safely with proper locking and delays.
-    This prevents crashes from concurrent or rapid operations.
-    """
-    global last_operation_time
+    try:
+        yield
+    except VoicemeeterUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProfileSwitchInProgress as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    with vmr_lock:
-        # Enforce minimum delay between operations
-        time_since_last = time.time() - last_operation_time
-        if time_since_last < MIN_DELAY_BETWEEN_OPERATIONS:
-            sleep_time = MIN_DELAY_BETWEEN_OPERATIONS - time_since_last
-            print(f"  Waiting {sleep_time:.1f}s before next operation...")
-            time.sleep(sleep_time)
 
-        # Create a fresh connection for this operation
-        try:
-            print("  Connecting to Voicemeeter...")
-            with voicemeeterlib.api('potato') as vmr:
-                print("  ✓ Connected")
-                result = operation_func(vmr)
-                print("  ✓ Operation complete")
-                last_operation_time = time.time()
-                return result
-        except Exception as e:
-            print(f"  ✗ Operation failed: {e}")
-            last_operation_time = time.time()
-            raise
+def display_name(path: Path) -> str:
+    """Strip the sort-order prefix: ``2-Headset.xml`` -> ``Headset``."""
+    stem = path.stem
+    if stem and stem[0].isdigit() and "-" in stem:
+        return stem.split("-", 1)[1]
+    return stem
+
+
+def find_profile(profile_name: str) -> tuple[int, Path]:
+    for index, path in enumerate(switcher.settings_files):
+        if path.name == profile_name:
+            return index, path
+    raise HTTPException(
+        status_code=404, detail=f"Profile not found: {profile_name}"
+    )
+
 
 @app.get("/")
 def root():
-    """API root endpoint"""
+    """API root endpoint."""
     return {
         "name": "Voicemeeter Control API",
         "version": "1.0",
@@ -71,185 +140,200 @@ def root():
             "/api/profiles",
             "/api/profile/load",
             "/api/profile/cycle",
-            "/api/status"
-        ]
+            "/api/status",
+            "/api/health",
+            "/api/volume/a1",
+            "/api/volume/a1/adjust",
+            "/api/mute/a1",
+            "/api/mute/a1/toggle",
+        ],
     }
+
 
 @app.get("/api/profiles")
 def get_profiles():
-    """Get list of available profiles"""
+    """Get list of available profiles."""
     profiles = [
         {
-            "filename": f.name,
-            "display_name": f.stem.split('-', 1)[1] if f.stem[0].isdigit() and '-' in f.stem else f.stem,
-            "index": i
+            "filename": path.name,
+            "display_name": display_name(path),
+            "index": index,
         }
-        for i, f in enumerate(switcher.settings_files)
+        for index, path in enumerate(switcher.settings_files)
     ]
     return {
         "profiles": profiles,
         "current_index": switcher.current_index,
-        "total": len(profiles)
+        "total": len(profiles),
     }
+
 
 @app.post("/api/profile/load")
 def load_profile(request: ProfileRequest):
-    """Load a specific profile by filename"""
-    try:
-        print(f"\nReceived request to load profile: {request.profile_name}")
+    """Load a specific profile by filename."""
+    print(f"\nReceived request to load profile: {request.profile_name}")
+    index, path = find_profile(request.profile_name)
+    print(f"Found profile at index {index}: {path.name}")
 
-        # Find the profile file
-        profile_path = None
-        profile_index = None
+    switcher.current_index = index
+    switcher._save_index()
 
-        for i, f in enumerate(switcher.settings_files):
-            if f.name == request.profile_name:
-                profile_path = f
-                profile_index = i
-                break
+    with translate_errors():
+        ok = controller.load_profile(path)
 
-        if profile_path is None:
-            print(f"Profile not found: {request.profile_name}")
-            print(f"Available files: {[f.name for f in switcher.settings_files]}")
-            raise HTTPException(status_code=404, detail=f"Profile not found: {request.profile_name}")
+    if not ok:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load profile - check Voicemeeter is running",
+        )
 
-        print(f"Found profile at index {profile_index}: {profile_path.name}")
+    name = display_name(path)
+    print(f"Successfully loaded profile: {name}\n")
+    return {
+        "status": "success",
+        "message": f"Loaded {name}",
+        "profile": request.profile_name,
+    }
 
-        # Update the current index
-        switcher.current_index = profile_index
-        switcher._save_index()
-
-        # Load the profile safely with mutex locking
-        def load_operation(vmr):
-            return switcher.load_setting(vmr, profile_path)
-
-        success = execute_with_vmr(load_operation)
-
-        if success:
-            display_name = profile_path.stem.split('-', 1)[1] if profile_path.stem[0].isdigit() and '-' in profile_path.stem else profile_path.stem
-            print(f"✓ Successfully loaded profile: {display_name}\n")
-            return {
-                "status": "success",
-                "message": f"Loaded {display_name}",
-                "profile": request.profile_name
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to load profile - check Voicemeeter is running")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Exception while loading profile: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/profile/cycle")
 def cycle_profile():
-    """Cycle to the next profile"""
-    try:
-        print("\nReceived request to cycle profile")
+    """Cycle to the next profile."""
+    print("\nReceived request to cycle profile")
 
-        # Cycle safely with mutex locking
-        def cycle_operation(vmr):
-            return switcher.cycle_next(vmr)
+    with translate_errors():
+        ok = controller.cycle_next()
 
-        success = execute_with_vmr(cycle_operation)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to cycle profile")
 
-        if success:
-            current_file = switcher.settings_files[switcher.current_index]
-            display_name = current_file.stem.split('-', 1)[1] if current_file.stem[0].isdigit() and '-' in current_file.stem else current_file.stem
-            print(f"✓ Cycled to profile: {display_name}\n")
-            return {
-                "status": "success",
-                "message": f"Switched to {display_name}",
-                "current_profile": current_file.name,
-                "current_index": switcher.current_index
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to cycle profile")
+    current = switcher.settings_files[switcher.current_index]
+    name = display_name(current)
+    print(f"Cycled to profile: {name}\n")
+    return {
+        "status": "success",
+        "message": f"Switched to {name}",
+        "current_profile": current.name,
+        "current_index": switcher.current_index,
+    }
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Exception while cycling profile: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/status")
 def get_status():
-    """Get current status"""
-    current_file = switcher.settings_files[switcher.current_index] if switcher.settings_files else None
-
-    if current_file:
-        display_name = current_file.stem.split('-', 1)[1] if current_file.stem[0].isdigit() and '-' in current_file.stem else current_file.stem
-        return {
-            "status": "running",
-            "current_profile": current_file.name,
-            "current_display_name": display_name,
-            "current_index": switcher.current_index,
-            "total_profiles": len(switcher.settings_files),
-            "settings_dir": str(switcher.settings_dir)
-        }
-    else:
+    """Get current status. Served from cache, so it is safe to poll."""
+    if not switcher.settings_files:
         return {
             "status": "running",
             "current_profile": None,
-            "message": "No profiles available"
+            "message": "No profiles available",
         }
+
+    current = switcher.settings_files[switcher.current_index]
+    snapshot = controller.snapshot()
+    return {
+        "status": "running",
+        "current_profile": current.name,
+        "current_display_name": display_name(current),
+        "current_index": switcher.current_index,
+        "total_profiles": len(switcher.settings_files),
+        "settings_dir": str(switcher.settings_dir),
+        "voicemeeter": snapshot,
+    }
+
 
 @app.get("/api/volume/a1")
 def get_a1_volume():
-    """Get current A1 output volume"""
-    try:
-        def get_volume_operation(vmr):
-            # Bus 0 is A1 output, get the gain parameter
-            # The gain value directly matches the dB display in Voicemeeter UI
-            gain = vmr.bus[0].gain
-            return gain
+    """Get current A1 output volume in dB."""
+    with translate_errors():
+        gain = controller.get_gain()
+    return {"bus": "A1", "gain": gain, "bus_index": 0}
 
-        gain = execute_with_vmr(get_volume_operation)
-        return {
-            "bus": "A1",
-            "gain": gain,
-            "bus_index": 0
-        }
-    except Exception as e:
-        print(f"Exception while getting A1 volume: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/volume/a1")
 def set_a1_volume(request: VolumeRequest):
-    """Set A1 output volume"""
-    try:
-        # Validate gain range (-60.0 to 12.0 dB is typical for Voicemeeter)
-        if request.gain < -60.0 or request.gain > 12.0:
-            raise HTTPException(status_code=400, detail="Gain must be between -60.0 and 12.0 dB")
+    """Set A1 output volume to an absolute dB value."""
+    if request.gain < GAIN_MIN_DB or request.gain > GAIN_MAX_DB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Gain must be between {GAIN_MIN_DB} and {GAIN_MAX_DB} dB",
+        )
 
-        print(f"\nReceived request to set A1 volume to {request.gain} dB")
+    print(f"\nReceived request to set A1 volume to {request.gain} dB")
+    with translate_errors():
+        gain = controller.set_gain(request.gain)
 
-        def set_volume_operation(vmr):
-            # Bus 0 is A1 output
-            # The gain value directly matches the dB display in Voicemeeter UI
-            vmr.bus[0].gain = request.gain
-            return True
+    print(f"Successfully set A1 volume to {gain} dB\n")
+    return {
+        "status": "success",
+        "message": f"Set A1 volume to {gain} dB",
+        "bus": "A1",
+        "gain": gain,
+    }
 
-        execute_with_vmr(set_volume_operation)
 
-        print(f"✓ Successfully set A1 volume to {request.gain} dB\n")
-        return {
-            "status": "success",
-            "message": f"Set A1 volume to {request.gain} dB",
-            "bus": "A1",
-            "gain": request.gain
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Exception while setting A1 volume: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
+@app.post("/api/volume/a1/adjust")
+def adjust_a1_volume(request: VolumeAdjustRequest):
+    """Move A1 volume by a relative amount.
+
+    This is the dial's entry point. Relative rather than absolute because a
+    rotary encoder only knows "one detent clockwise", and because
+    read-then-write from the caller would race the web UI.
+    """
+    if abs(request.delta_db) > MAX_DELTA_DB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"delta_db must be within +/-{MAX_DELTA_DB} dB",
+        )
+
+    with translate_errors():
+        gain = controller.adjust_gain(request.delta_db)
+
+    return {
+        "status": "success",
+        "bus": "A1",
+        "gain": gain,
+        "delta_db": request.delta_db,
+        "at_limit": gain in (GAIN_MIN_DB, GAIN_MAX_DB),
+    }
+
+
+@app.get("/api/mute/a1")
+def get_a1_mute():
+    """Get current A1 mute state."""
+    with translate_errors():
+        muted = controller.get_mute()
+    return {"bus": "A1", "muted": muted}
+
+
+@app.post("/api/mute/a1")
+def set_a1_mute(request: MuteRequest):
+    """Set A1 mute state explicitly."""
+    with translate_errors():
+        muted = controller.set_mute(request.muted)
+    return {"status": "success", "bus": "A1", "muted": muted}
+
+
+@app.post("/api/mute/a1/toggle")
+def toggle_a1_mute():
+    """Flip A1 mute. Bound to the buttons 1+2 chord on the dial."""
+    with translate_errors():
+        muted = controller.toggle_mute()
+
+    print(f"A1 {'muted' if muted else 'unmuted'}")
+    return {"status": "success", "bus": "A1", "muted": muted}
+
+
+@app.get("/api/health")
+def health():
+    """Liveness probe.
+
+    Always 200 if the HTTP server is up, so a client can distinguish "the API
+    isn't running yet" (connection refused) from "the API is up but Voicemeeter
+    isn't" (``voicemeeter.connected`` false). The dial bridge polls this on
+    startup, since on a cold boot it may well come up first.
+    """
+    return {
+        "status": "ok",
+        "profiles": len(switcher.settings_files),
+        "voicemeeter": controller.snapshot(),
+    }

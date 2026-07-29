@@ -5,4 +5,21 @@ description = "Cycles through Voicemeeter saved settings"
 requires-python = ">=3.14"
 dependencies = [
     "voicemeeter-api>=2.4.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.0",
+    # Toast notifications, used by main.py. Windows only; main.py degrades
+    # gracefully when it is missing.
+    "winotify>=1.1; sys_platform == 'win32'",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+# Tests import top-level modules (controller, api, main) from the repo root.
+pythonpath = ["."]
+testpaths = ["tests"]

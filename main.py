@@ -3,7 +3,6 @@ Voicemeeter Settings Switcher
 Cycles through saved Voicemeeter settings files (.xml)
 """
 
-import voicemeeterlib
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -195,6 +194,12 @@ class VoicemeeterSettingsSwitcher:
 
 def main():
     """Main function - cycles to the next setting."""
+    # Imported here rather than at module scope: voicemeeterlib raises on
+    # import on non-Windows platforms, and VoicemeeterSettingsSwitcher itself
+    # never needs it. Keeping the import local means this module (and the API
+    # that imports it) can be loaded and tested anywhere.
+    import voicemeeterlib
+
     print("=== Voicemeeter Settings Switcher ===\n")
 
     switcher = VoicemeeterSettingsSwitcher()
