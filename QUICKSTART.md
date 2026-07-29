@@ -16,7 +16,7 @@ Just run this:
 ```
 start_all.bat
 ```
-Then open: **http://localhost:3000**
+Then open: **http://localhost:3100**
 
 ### 3. Works Everywhere
 - 💻 Desktop browser
@@ -38,8 +38,8 @@ Then open: **http://localhost:3000**
 Double-click: `start_all.bat`
 
 ### Step 2: Open Browser
-- Local: http://localhost:3000
-- Network: http://YOUR-COMPUTER-NAME.local:3000
+- Local: http://localhost:3100
+- Network: http://YOUR-COMPUTER-NAME.local:3100
 
 ### Step 3: Control Your Audio
 - Click any profile card to switch
@@ -174,7 +174,7 @@ Your Voicemeeter web control system is complete and ready to use!
 
 **To start using:**
 1. `start_all.bat`
-2. Open http://localhost:3000
+2. Open http://localhost:3100
 3. Click profiles to switch!
 
 Enjoy your new professional audio control system! 🎵

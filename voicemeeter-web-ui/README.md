@@ -19,7 +19,7 @@ A modern Next.js web application for controlling Voicemeeter audio profiles.
    run_api.bat
    ```
 
-2. The API should be running at `http://localhost:5000`
+2. The API should be running at `http://localhost:8080`
 
 ## Getting Started
 
@@ -35,7 +35,7 @@ A modern Next.js web application for controlling Voicemeeter audio profiles.
    npm run dev
    ```
 
-3. Open [http://localhost:3000](http://localhost:3000) in your browser
+3. Open [http://localhost:3100](http://localhost:3100) in your browser
 
 ### Production Build
 
@@ -54,30 +54,30 @@ A modern Next.js web application for controlling Voicemeeter audio profiles.
 Edit `.env.local` to change the API URL:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
 To access from other devices on your network, change it to:
 
 ```env
-NEXT_PUBLIC_API_URL=http://YOUR-COMPUTER-NAME.local:5000
+NEXT_PUBLIC_API_URL=http://YOUR-COMPUTER-NAME.local:8080
 ```
 
 Or use your IP address:
 
 ```env
-NEXT_PUBLIC_API_URL=http://192.168.1.100:5000
+NEXT_PUBLIC_API_URL=http://192.168.1.100:8080
 ```
 
 ## Usage
 
 ### Desktop/Laptop
-Simply open the web app in any browser at `http://localhost:3000`
+Simply open the web app in any browser at `http://localhost:3100`
 
 ### Mobile Access
 1. Make sure your phone is on the same WiFi network
 2. Find your computer's name or IP address
-3. Open the web app at `http://YOUR-COMPUTER-NAME.local:3000` or `http://192.168.1.100:3000`
+3. Open the web app at `http://YOUR-COMPUTER-NAME.local:3100` or `http://192.168.1.100:3100`
 
 ### Switching Profiles
 - Click on any profile card to switch to that profile
@@ -113,14 +113,14 @@ voicemeeter-web-ui/
 
 ### Can't connect to API
 - Make sure `run_api.bat` is running
-- Check that port 5000 is not blocked by firewall
+- Check that port 8080 is not blocked by firewall
 - Verify the API URL in `.env.local`
 
 ### Mobile can't access
 - Ensure both devices are on the same network
-- Add firewall rule for port 3000:
+- Add firewall rule for port 3100:
   ```powershell
-  New-NetFirewallRule -DisplayName "Next.js Dev Server" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+  New-NetFirewallRule -DisplayName "Next.js Dev Server" -Direction Inbound -LocalPort 3100 -Protocol TCP -Action Allow
   ```
 
 ### Styles not showing

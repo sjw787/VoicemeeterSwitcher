@@ -23,10 +23,10 @@ echo.
 echo Updating .env.local file...
 (
 echo # API URL for network access
-echo NEXT_PUBLIC_API_URL=http://%COMPUTERNAME%:5000
+echo NEXT_PUBLIC_API_URL=http://%COMPUTERNAME%:8080
 echo.
 echo # Alternative: Use IP address if computer name doesn't work
-echo # NEXT_PUBLIC_API_URL=http://%IP%:5000
+echo # NEXT_PUBLIC_API_URL=http://%IP%:8080
 ) > voicemeeter-web-ui\.env.local
 
 echo   ✓ Updated .env.local
@@ -38,8 +38,8 @@ echo ==========================================
 echo.
 echo From other devices, access the web UI at:
 echo.
-echo   Option 1: http://%COMPUTERNAME%.local:3000
-echo   Option 2: http://%IP%:3000
+echo   Option 1: http://%COMPUTERNAME%.local:3100
+echo   Option 2: http://%IP%:3100
 echo.
 echo IMPORTANT: Restart the web UI server now!
 echo   1. Stop the current web UI (Ctrl+C)

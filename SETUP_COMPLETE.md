@@ -55,25 +55,25 @@ You now have a complete web-based control system for Voicemeeter with:
    ```
 
 3. **Open in browser**
-   - On your PC: http://localhost:3000
-   - From phone: http://YOUR-COMPUTER-NAME.local:3000
+   - On your PC: http://localhost:3100
+   - From phone: http://YOUR-COMPUTER-NAME.local:3100
 
 ### Daily Use
 
-Just double-click `start_all.bat` and open http://localhost:3000!
+Just double-click `start_all.bat` and open http://localhost:3100!
 
 ## 📱 Mobile Access
 
 ### iPhone/iPad
 1. Connect to same WiFi as your PC
 2. Open Safari
-3. Go to: `http://YOUR-COMPUTER-NAME.local:3000`
+3. Go to: `http://YOUR-COMPUTER-NAME.local:3100`
 4. Tap Share → Add to Home Screen (optional, but convenient!)
 
 ### Android
 1. Connect to same WiFi as your PC
 2. Open Chrome
-3. Go to: `http://YOUR-COMPUTER-NAME.local:3000`
+3. Go to: `http://YOUR-COMPUTER-NAME.local:3100`
 4. Menu → Add to Home screen (optional)
 
 ## 🎨 What It Looks Like
@@ -99,12 +99,12 @@ The interface features:
 ### Change API URL
 Edit `voicemeeter-web-ui/.env.local`:
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
 For network access from other devices:
 ```env
-NEXT_PUBLIC_API_URL=http://YOUR-COMPUTER-NAME.local:5000
+NEXT_PUBLIC_API_URL=http://YOUR-COMPUTER-NAME.local:8080
 ```
 
 ### Change Web UI Port
@@ -181,7 +181,7 @@ npm install
 ```
 
 ### Can't connect to API
-1. Verify API is running: http://localhost:5000
+1. Verify API is running: http://localhost:8080
 2. Check `.env.local` has correct API URL
 3. Look at browser console (F12) for errors
 
@@ -193,12 +193,12 @@ npm run build
 
 ### Mobile can't access
 1. Both devices on same WiFi? ✓
-2. Firewall rule for port 3000? ✓
+2. Firewall rule for port 3100? ✓
 3. Using `.local` address or IP? ✓
 
 Add firewall rule:
 ```powershell
-New-NetFirewallRule -DisplayName "Next.js Dev" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Next.js Dev" -Direction Inbound -LocalPort 3100 -Protocol TCP -Action Allow
 ```
 
 ## 🎯 Next Steps
@@ -238,7 +238,7 @@ Your Voicemeeter web interface is ready to use! Enjoy controlling your audio fro
 **Remember:**
 1. Start API: `run_api.bat`
 2. Start Web UI: `run_webui.bat` (or use `start_all.bat`)
-3. Open: http://localhost:3000
-4. Mobile: http://YOUR-COMPUTER-NAME.local:3000
+3. Open: http://localhost:3100
+4. Mobile: http://YOUR-COMPUTER-NAME.local:3100
 
 Happy audio switching! 🎵
