@@ -173,7 +173,7 @@ class TestGain:
 
     def test_adjust_reads_hardware_when_cache_is_cold(self, backend, switcher, clock):
         """No prior write, so the first adjust must establish a real baseline."""
-        backend.remote.bus[0]._gain = -20.0
+        backend.remote.seed(gain=-20.0)
         ctl = VoicemeeterController(
             switcher, backend=backend, monotonic=clock.monotonic, sleep=clock.sleep
         )
@@ -188,7 +188,7 @@ class TestGain:
 
     def test_force_refresh_rereads_hardware(self, controller, remote):
         controller.set_gain(-6.0)
-        remote.bus[0]._gain = -22.0  # changed behind our back
+        remote.external_change(gain=-22.0)  # changed behind our back
         assert controller.get_gain() == -6.0
         assert controller.get_gain(force_refresh=True) == -22.0
 
@@ -209,7 +209,7 @@ class TestMute:
         assert controller.set_mute(False) is False
 
     def test_toggle_reads_hardware_when_cache_is_cold(self, backend, switcher, clock):
-        backend.remote.bus[0]._mute = True
+        backend.remote.seed(mute=True)
         ctl = VoicemeeterController(
             switcher, backend=backend, monotonic=clock.monotonic, sleep=clock.sleep
         )

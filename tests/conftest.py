@@ -34,18 +34,32 @@ class FakeDevice:
 
 
 class FakeBus:
-    """One Voicemeeter bus. Gain and mute are plain read/write properties."""
+    """One Voicemeeter bus.
+
+    Reads are served from a *snapshot*, not from the live value, mirroring
+    ``VBVMR_GetParameterFloat``. The snapshot only catches up when the dirty
+    flag is polled -- see :meth:`FakeRemote.pdirty`. Writes made through this
+    object update both, since a client always sees its own writes.
+    """
 
     def __init__(self, remote: "FakeRemote") -> None:
         self._remote = remote
         self._gain = 0.0
         self._mute = False
+        #: What a read returns until the dirty flag is polled.
+        self._snapshot_gain = 0.0
+        self._snapshot_mute = False
         self.device = FakeDevice()
+
+    def _publish(self) -> None:
+        """Bring the read snapshot up to date with the live values."""
+        self._snapshot_gain = self._gain
+        self._snapshot_mute = self._mute
 
     @property
     def gain(self) -> float:
         self._remote.gain_reads += 1
-        return self._gain
+        return self._snapshot_gain
 
     @gain.setter
     def gain(self, value: float) -> None:
@@ -53,11 +67,12 @@ class FakeBus:
             raise RuntimeError("simulated Voicemeeter write failure")
         self._remote.gain_writes.append(float(value))
         self._gain = float(value)
+        self._snapshot_gain = float(value)
 
     @property
     def mute(self) -> bool:
         self._remote.mute_reads += 1
-        return self._mute
+        return self._snapshot_mute
 
     @mute.setter
     def mute(self, value: bool) -> None:
@@ -65,6 +80,7 @@ class FakeBus:
             raise RuntimeError("simulated Voicemeeter write failure")
         self._remote.mute_writes.append(bool(value))
         self._mute = bool(value)
+        self._snapshot_mute = bool(value)
 
 
 class FakeStrip:
@@ -90,6 +106,61 @@ class FakeRemote:
         self.gain_writes: list[float] = []
         self.mute_writes: list[bool] = []
         self.fail_writes = False
+        #: voicemeeterlib's set-into-get memo. Present so code that inspects it
+        #: does not trip over a missing attribute.
+        self.cache: dict = {}
+        self._dirty = False
+        self.pdirty_polls = 0
+
+    @property
+    def pdirty(self) -> bool:
+        """Mirrors ``VBVMR_IsParametersDirty``.
+
+        Returns True once after something changed the values behind the
+        snapshot, and *the act of polling refreshes the snapshot*. That is the
+        real API's contract, and the reason a client that never polls can read
+        a stale fader position indefinitely.
+        """
+        self.pdirty_polls += 1
+        if not self._dirty:
+            return False
+        self._dirty = False
+        for bus in self.bus:
+            bus._publish()
+        return True
+
+    def seed(
+        self, *, gain: float | None = None, mute: bool | None = None, index: int = 0
+    ) -> None:
+        """Set the state Voicemeeter was already in before anyone connected.
+
+        Unlike :meth:`external_change`, this is immediately visible to reads --
+        it represents the starting position, not a change made behind a
+        client's back.
+        """
+        bus = self.bus[index]
+        if gain is not None:
+            bus._gain = float(gain)
+            bus._snapshot_gain = float(gain)
+        if mute is not None:
+            bus._mute = bool(mute)
+            bus._snapshot_mute = bool(mute)
+
+    def external_change(
+        self, *, gain: float | None = None, mute: bool | None = None, index: int = 0
+    ) -> None:
+        """Change values the way the Voicemeeter GUI or another client would.
+
+        Updates the live value and raises the dirty flag, but deliberately does
+        **not** touch the read snapshot -- exactly what was observed on real
+        hardware.
+        """
+        bus = self.bus[index]
+        if gain is not None:
+            bus._gain = float(gain)
+        if mute is not None:
+            bus._mute = bool(mute)
+        self._dirty = True
 
     def login(self) -> None:
         self.logins += 1
@@ -134,7 +205,9 @@ class FakeSwitcher:
 
     def _maybe_move_fader(self, remote) -> None:
         if self.gain_after_load is not None:
-            remote.bus[0]._gain = self.gain_after_load
+            # A real profile load moves the fader behind the API's back, so it
+            # has to raise the dirty flag like any other external change.
+            remote.external_change(gain=self.gain_after_load)
 
     def load_setting(self, remote, path) -> bool:
         self.seen_remotes.append(remote)

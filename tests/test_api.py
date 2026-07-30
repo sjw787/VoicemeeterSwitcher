@@ -136,6 +136,103 @@ class TestVolume:
         assert "not running" in response.json()["detail"]
 
 
+class TestVolumeRefresh:
+    """Reproduces a divergence seen on real hardware, 2026-07-30.
+
+    The service reported -18.0 dB while Voicemeeter was actually at -20.0,
+    because something outside the API had moved the fader and the cache is only
+    corrected on connect and after a profile load. Without a way to force a
+    re-read there was no way to notice, and a relative controller such as a
+    dial would compute its first delta from the stale base.
+    """
+
+    def move_fader_externally(self, remote, gain: float) -> None:
+        """Change gain the way the Voicemeeter GUI would: behind the snapshot."""
+        remote.external_change(gain=gain)
+
+    def test_cached_read_goes_stale(self, client, remote):
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        self.move_fader_externally(remote, -20.0)
+        assert client.get("/api/volume/a1").json()["gain"] == -18.0
+
+    def test_refresh_true_sees_the_real_value(self, client, remote):
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        self.move_fader_externally(remote, -20.0)
+        body = client.get("/api/volume/a1", params={"refresh": "true"}).json()
+        assert body["gain"] == -20.0
+        assert body["refreshed"] is True
+
+    def test_refresh_polls_the_dirty_flag(self, client, remote):
+        """Without the poll the DLL keeps serving its old snapshot."""
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        before = remote.pdirty_polls
+        self.move_fader_externally(remote, -20.0)
+        client.get("/api/volume/a1", params={"refresh": "true"})
+        assert remote.pdirty_polls > before
+
+    def test_reading_without_polling_would_stay_stale(self, remote):
+        """Pins the DLL behaviour the fix exists for.
+
+        Reading the bus directly, with no dirty poll, returns the old value
+        forever. This is what the service did before the fix.
+        """
+        remote.bus[0].gain = -18.0
+        remote.external_change(gain=-20.0)
+        assert remote.bus[0].gain == -18.0
+        assert remote.bus[0].gain == -18.0
+        assert remote.pdirty is True
+        assert remote.bus[0].gain == -20.0
+
+    def test_refresh_repairs_the_cache_for_later_reads(self, client, remote):
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        self.move_fader_externally(remote, -20.0)
+        client.get("/api/volume/a1", params={"refresh": "true"})
+        assert client.get("/api/volume/a1").json()["gain"] == -20.0
+
+    def test_adjust_after_refresh_uses_the_real_base(self, client, remote):
+        """The bug that would bite the dial: first click from a stale base."""
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        self.move_fader_externally(remote, -20.0)
+        client.get("/api/volume/a1", params={"refresh": "true"})
+        body = client.post("/api/volume/a1/adjust", json={"delta_db": -1.5}).json()
+        assert body["gain"] == -21.5
+
+    def test_adjust_without_refresh_shows_the_jump(self, client, remote):
+        """Documents the failure mode, so the reason for refresh stays visible."""
+        client.post("/api/volume/a1", json={"gain": -18.0})
+        self.move_fader_externally(remote, -20.0)
+        body = client.post("/api/volume/a1/adjust", json={"delta_db": -1.5}).json()
+        # Computed from the stale -18.0, so the fader jumps up by 0.5 dB
+        # instead of stepping down from -20.0.
+        assert body["gain"] == -19.5
+
+    def test_default_read_does_not_touch_the_dll(self, client, remote):
+        client.get("/api/volume/a1")
+        before = remote.gain_reads
+        client.get("/api/volume/a1")
+        client.get("/api/volume/a1")
+        assert remote.gain_reads == before
+
+    def test_refresh_does_touch_the_dll(self, client, remote):
+        client.get("/api/volume/a1")
+        before = remote.gain_reads
+        client.get("/api/volume/a1", params={"refresh": "true"})
+        assert remote.gain_reads > before
+
+    def test_mute_refresh_sees_external_change(self, client, remote):
+        assert client.get("/api/mute/a1").json()["muted"] is False
+        remote.external_change(mute=True)
+        assert client.get("/api/mute/a1").json()["muted"] is False
+        body = client.get("/api/mute/a1", params={"refresh": "true"}).json()
+        assert body["muted"] is True
+        assert body["refreshed"] is True
+
+    def test_refresh_reports_503_when_voicemeeter_is_down(self, client, backend):
+        backend.fail_with = RuntimeError("Voicemeeter not running")
+        response = client.get("/api/volume/a1", params={"refresh": "true"})
+        assert response.status_code == 503
+
+
 class TestVolumeAdjust:
     """The dial's entry point."""
 

@@ -53,6 +53,11 @@ DEFAULT_CONNECT_RETRY_COOLDOWN = 2.0
 #: profile switch completes.
 DEFAULT_FAST_LOCK_TIMEOUT = 0.5
 
+#: How many times to poll the Voicemeeter Remote dirty flag when resyncing.
+#: ``voicemeeterlib.remote.clear_dirty()`` does this with an unbounded ``while``,
+#: which is not safe inside a request handler, so the loop is capped.
+DEFAULT_DIRTY_POLL_LIMIT = 8
+
 
 class VoicemeeterUnavailable(RuntimeError):
     """Voicemeeter could not be reached (not running, or the DLL is missing)."""
@@ -97,6 +102,7 @@ class VoicemeeterController:
         min_profile_interval: float = DEFAULT_MIN_PROFILE_INTERVAL,
         connect_retry_cooldown: float = DEFAULT_CONNECT_RETRY_COOLDOWN,
         fast_lock_timeout: float = DEFAULT_FAST_LOCK_TIMEOUT,
+        dirty_poll_limit: int = DEFAULT_DIRTY_POLL_LIMIT,
         reconnect_per_operation: bool = False,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -107,6 +113,7 @@ class VoicemeeterController:
         self._min_profile_interval = min_profile_interval
         self._connect_retry_cooldown = connect_retry_cooldown
         self._fast_lock_timeout = fast_lock_timeout
+        self._dirty_poll_limit = dirty_poll_limit
         self._reconnect_per_operation = reconnect_per_operation
         self._monotonic = monotonic
         self._sleep = sleep
@@ -233,8 +240,38 @@ class VoicemeeterController:
         finally:
             self._dll_lock.release()
 
+    def _sync_from_dll(self, remote: Any) -> None:
+        """Make the DLL's parameter snapshot current before reading it.
+
+        ``VBVMR_GetParameterFloat`` is served from a snapshot that only
+        refreshes when the caller polls ``VBVMR_IsParametersDirty``. A process
+        that never polls reads values frozen at its last poll, so a fader moved
+        by the Voicemeeter GUI or by another client is *invisible* -- no amount
+        of re-reading will show it.
+
+        Verified on real hardware 2026-07-30: a separate process set A1 to
+        -30.0 dB, Voicemeeter's own UI showed -30.0, and this service kept
+        returning -24.0 across repeated forced reads until the flag was polled.
+
+        ``voicemeeterlib`` exposes this as ``sync=True`` on the constructor, but
+        its ``polling`` decorator checks its own set-into-get memo *before* the
+        sync branch, so enabling sync alone would not be enough after a local
+        write. Polling here is explicit and bounded.
+        """
+        try:
+            for _ in range(self._dirty_poll_limit):
+                if not remote.pdirty:
+                    return
+        except AttributeError:
+            # Older or stubbed remotes may not expose the flag; a plain read is
+            # still correct, just possibly stale.
+            return
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("polling the dirty flag failed", exc_info=True)
+
     def _refresh(self, remote: Any) -> None:
         """Re-read gain and mute from Voicemeeter into the cache."""
+        self._sync_from_dll(remote)
         bus = remote.bus[A1_BUS_INDEX]
         gain = float(bus.gain)
         mute = bool(bus.mute)

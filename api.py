@@ -242,11 +242,22 @@ def get_status():
 
 
 @app.get("/api/volume/a1")
-def get_a1_volume():
-    """Get current A1 output volume in dB."""
+def get_a1_volume(refresh: bool = False):
+    """Get current A1 output volume in dB.
+
+    Served from the cached view by default, which is why it is cheap enough to
+    poll. Pass ``?refresh=true`` to re-read Voicemeeter instead.
+
+    The cache is only corrected when the connection opens and after a profile
+    load, so anything that moves the fader behind this service's back -- the
+    Voicemeeter GUI, a second client, a Stream Deck macro -- leaves it stale.
+    A relative controller such as a dial should refresh once before its first
+    adjustment after an idle period, otherwise it computes its delta from a
+    stale base and the volume jumps.
+    """
     with translate_errors():
-        gain = controller.get_gain()
-    return {"bus": "A1", "gain": gain, "bus_index": 0}
+        gain = controller.get_gain(force_refresh=refresh)
+    return {"bus": "A1", "gain": gain, "bus_index": 0, "refreshed": refresh}
 
 
 @app.post("/api/volume/a1")
@@ -298,11 +309,15 @@ def adjust_a1_volume(request: VolumeAdjustRequest):
 
 
 @app.get("/api/mute/a1")
-def get_a1_mute():
-    """Get current A1 mute state."""
+def get_a1_mute(refresh: bool = False):
+    """Get current A1 mute state.
+
+    Cached by default; ``?refresh=true`` re-reads Voicemeeter. Same staleness
+    caveat as the gain endpoint.
+    """
     with translate_errors():
-        muted = controller.get_mute()
-    return {"bus": "A1", "muted": muted}
+        muted = controller.get_mute(force_refresh=refresh)
+    return {"bus": "A1", "muted": muted, "refreshed": refresh}
 
 
 @app.post("/api/mute/a1")
